@@ -63,6 +63,8 @@
             border-radius: 6px;
             font-family: monospace;
             font-size: 1rem;
+            width: 100%; /* Make input fields take full width of their container */
+            box-sizing: border-box; /* Include padding and border in the element's total width and height */
         }
 
         .buttons {
@@ -180,6 +182,163 @@
             font-size: 0.95rem;
             line-height: 1.5;
         }
+
+        /* --- Deduplication View Specific Styles --- */
+        .deduplication-view {
+            display: none; /* Hidden by default */
+        }
+        
+        .view-toggle {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .chunks-wrapper {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        
+        .chunk.deduplicated-chunk {
+            background-color: #f1c40f;
+            border-color: #f39c12;
+            color: #333;
+            position: relative;
+        }
+        
+        .chunk.deduplicated-chunk::after {
+            content: 'REUSED';
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: #c0392b;
+            color: white;
+            padding: 2px 5px;
+            font-size: 0.7rem;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        /* --- Toggle Switch Styles --- */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+        }
+        input:checked + .slider {
+            background-color: var(--highlight-color);
+        }
+        input:focus + .slider {
+            box-shadow: 0 0 1px var(--highlight-color);
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .slider.round {
+            border-radius: 34px;
+        }
+        .slider.round:before {
+            border-radius: 50%;
+        }
+
+        label[for="dedup-toggle"] {
+            margin-left: 10px;
+            font-weight: 600;
+        }
+
+        .controls .control-group:first-child,
+        .controls .control-group.deduplication-view,
+        .controls .buttons {
+            grid-column: 1 / -1;
+        }
+        
+        .buttons {
+            justify-content: center;
+        }
+
+        #stream-2-title {
+            margin-top: 20px;
+        }
+
+        .info-panel .info-box:nth-child(2) {
+            border-left-color: var(--boundary-color);
+        }
+        
+        #boundary-status {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        
+        #hash-binary {
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        #zeros-count {
+            color: var(--boundary-color);
+        }
+
+        .info-box p:last-child {
+            font-size: 0.8rem;
+            margin-top: 5px;
+        }
+
+        #dedup-stats-box {
+            border-left-color: #f39c12;
+        }
+        
+        #dedup-total {
+            color: #333;
+        }
+        
+        #dedup-unique {
+            color: var(--boundary-color);
+        }
+        
+        #dedup-duplicates {
+            color: #e74c3c;
+        }
+        
+        #dedup-saved {
+            color: #f39c12;
+        }
+        
+        .container + .container {
+            margin-top: 20px;
+        }
+
+        #avg-size {
+            background: #eee;
+            color: #666;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -187,10 +346,21 @@
     <h1>Content-Defined Chunking & Rolling Hash</h1>
 
     <div class="container">
+        <div class="view-toggle">
+            <label class="switch">
+                <input type="checkbox" id="dedup-toggle">
+                <span class="slider round"></span>
+            </label>
+            <label for="dedup-toggle">Enable Deduplication View</label>
+        </div>
         <div class="controls">
-            <div class="control-group" style="grid-column: 1 / -1;">
-                <label for="data-input">Data Stream (Text):</label>
-                <input type="text" id="data-input" value="content defined chunking uses data patterns to cut">
+            <div class="control-group" >
+                <label for="data-input">Data Stream 1 (Original):</label>
+                <input type="text" id="data-input" value="The quick brown fox jumps over the lazy dog.">
+            </div>
+            <div class="control-group deduplication-view" id="data-input-2-container">
+                <label for="data-input-2">Data Stream 2 (Modified):</label>
+                <input type="text" id="data-input-2" value="The quick brown cat jumps over the lazy dog.">
             </div>
             <div class="control-group">
                 <label for="window-size">Window Size:</label>
@@ -202,9 +372,9 @@
             </div>
              <div class="control-group">
                 <label title="Expected average chunk size = 2^n">Avg. Chunk Size (2ⁿ):</label>
-                <input type="text" id="avg-size" value="8" readonly style="background: #eee; color: #666; cursor: not-allowed;">
+                <input type="text" id="avg-size" value="8" readonly>
             </div>
-            <div class="buttons" style="grid-column: 1 / -1; justify-content: center;">
+            <div class="buttons">
                 <button id="step-btn">Step ></button>
                 <button id="play-btn">Play >></button>
                 <button id="reset-btn">Reset</button>
@@ -212,8 +382,14 @@
         </div>
 
         <div class="visualization">
+            <h3 id="stream-1-title">Data Stream</h3>
             <div class="data-stream-container" id="data-stream">
                 <div class="window" id="sliding-window"></div>
+            </div>
+            <div class="deduplication-view" id="stream-2-title">
+                 <h3>Data Stream 2</h3>
+            </div>
+            <div class="data-stream-container deduplication-view" id="data-stream-2">
             </div>
         </div>
 
@@ -223,23 +399,37 @@
                 <p>Current Window: <span id="current-window-text" class="highlight"></span></p>
                 <p>Current Hash (Dec): <span id="current-hash" class="hash-value">0</span></p>
             </div>
-            <div class="info-box" style="border-left-color: var(--boundary-color);">
-                <h3>Chunking Status</h3>
-                <p>Boundary Found? <span id="boundary-status" style="font-weight: bold; color: #e74c3c;">No</span></p>
-                <p>Hash (32-bit Binary):<br> <span id="hash-binary" style="font-family: monospace; font-size: 0.85rem;"></span></p>
-                <p>Leading Zeros: <span id="zeros-count" class="hash-value" style="color: var(--boundary-color);"></span> (Target: <span id="lbl-target-zeros"></span>)</p>
-                <p style="font-size: 0.8rem; margin-top: 5px;">Condition: <code>Leading Zeros >= Target</code></p>
-            </div>
-        </div>
+                        <div class="info-box">
+                            <h3>Chunking Status</h3>
+                            <p>Boundary Found? <span id="boundary-status">No</span></p>
+                            <p>Hash (32-bit Binary):<br> <span id="hash-binary"></span></p>
+                            <p>Leading Zeros: <span id="zeros-count" class="hash-value"></span> (Target: <span id="lbl-target-zeros"></span>)</p>
+                            <p>Condition: <code>Leading Zeros >= Target</code></p>
+                        </div>
+                        <div class="info-box deduplication-view" id="dedup-stats-box">
+                            <h3>Deduplication Stats (Stream 2)</h3>
+                            <p>Total Chunks: <span id="dedup-total" class="hash-value">0</span></p>
+                            <p>Unique Chunks: <span id="dedup-unique" class="hash-value">0</span></p>
+                            <p>Duplicate Chunks: <span id="dedup-duplicates" class="hash-value">0</span></p>
+                            <p>Space Saved: <span id="dedup-saved" class="hash-value">0%</span></p>
+                        </div>
+                    </div>
 
         <div>
-            <h3>Generated Chunks:</h3>
-            <div class="chunks-display" id="chunks-container">
+            <div class="chunks-wrapper">
+                <div>
+                    <h3 id="chunks-1-title">Generated Chunks (Stream 1)</h3>
+                    <div class="chunks-display" id="chunks-container"></div>
                 </div>
+                <div class="deduplication-view" id="chunks-2-container">
+                    <h3>Generated Chunks (Stream 2)</h3>
+                    <div class="chunks-display" id="chunks-container-2"></div>
+                </div>
+            </div>
         </div>
     </div>
     
-    <div class="container" style="margin-top: 20px;">
+    <div class="container">
         <div class="explanation">
             <h3>How it Works (Leading Zeros Method):</h3>
             <ol>
@@ -248,6 +438,7 @@
                 <li>It counts the number of **leading zeros** in this binary string.</li>
                 <li>If the <code>Count of Leading Zeros</code> is greater than or equal to your chosen <code>Target Leading Zeros (n)</code>, a **chunk boundary** is created.</li>
                 <li>This is a probabilistic method. Searching for $n$ leading zeros means the probability of finding a boundary at any specific point is $1/2^n$. This results in an expected average chunk size of $2^n$ bytes.</li>
+                <li class="deduplication-view"><strong>Deduplication:</strong> When the second stream is processed, the hash of each new chunk is compared against a list of hashes from the first stream. If a match is found, the chunk is marked as a **duplicate** and doesn't need to be stored again, saving space.</li>
             </ol>
         </div>
     </div>
@@ -261,21 +452,32 @@
 
         let state = {
             data: '',
+            data2: '',
             windowSize: 0,
             targetLeadingZeros: 0,
             currentIndex: 0,
             currentHash: 0,
             lastBoundaryIndex: 0,
             chunks: [],
+            chunks2: [],
+            chunkHashes1: new Set(),
             boundaries: [],
             isPlaying: false,
             playInterval: null,
-            windowPower: 1 // base^(windowSize-1) % prime
+            windowPower: 1, // base^(windowSize-1) % prime
+            isDedupEnabled: false,
+            dedupStats: {
+                total: 0,
+                unique: 0,
+                duplicates: 0,
+                saved: 0
+            }
         };
 
         // --- DOM Elements ---
         const elements = {
             dataInput: document.getElementById('data-input'),
+            dataInput2: document.getElementById('data-input-2'),
             windowSizeInput: document.getElementById('window-size'),
             targetZerosInput: document.getElementById('target-zeros'),
             avgSizeInput: document.getElementById('avg-size'),
@@ -283,6 +485,7 @@
             playBtn: document.getElementById('play-btn'),
             resetBtn: document.getElementById('reset-btn'),
             dataStream: document.getElementById('data-stream'),
+            dataStream2: document.getElementById('data-stream-2'),
             slidingWindow: document.getElementById('sliding-window'),
             currentWindowText: document.getElementById('current-window-text'),
             currentHash: document.getElementById('current-hash'),
@@ -290,7 +493,14 @@
             zerosCount: document.getElementById('zeros-count'),
             boundaryStatus: document.getElementById('boundary-status'),
             lblTargetZeros: document.getElementById('lbl-target-zeros'),
-            chunksContainer: document.getElementById('chunks-container')
+            chunksContainer: document.getElementById('chunks-container'),
+            chunksContainer2: document.getElementById('chunks-container-2'),
+            dedupToggle: document.getElementById('dedup-toggle'),
+            dedupStatsBox: document.getElementById('dedup-stats-box'),
+            dedupTotal: document.getElementById('dedup-total'),
+            dedupUnique: document.getElementById('dedup-unique'),
+            dedupDuplicates: document.getElementById('dedup-duplicates'),
+            dedupSaved: document.getElementById('dedup-saved')
         };
 
         // --- Rolling Hash Implementation ---
@@ -307,115 +517,169 @@
         function rollHash(oldHash, charOut, charIn) {
             // H_new = ((H_old - charOut * base^(k-1)) * base + charIn) % prime
             let h = oldHash;
-            // Add config.prime before modulo to handle potential negative result after subtraction
+            // Modulo arithmetic to ensure the result is always positive
             h = (h - (charOut.charCodeAt(0) * state.windowPower) % config.prime + config.prime) % config.prime;
             h = (h * config.base) % config.prime; // Shift left
             h = (h + charIn.charCodeAt(0)) % config.prime; // Add incoming char
             return h;
         }
 
+        function toggleDedupView() {
+            state.isDedupEnabled = elements.dedupToggle.checked;
+            const views = document.querySelectorAll('.deduplication-view');
+            views.forEach(v => {
+                v.style.display = state.isDedupEnabled ? (v.tagName === 'DIV' && !v.classList.contains('info-box') ? 'block' : 'grid') : 'none';
+            });
+
+            // Adjust layout for side-by-side chunk view
+            const chunksWrapper = document.querySelector('.chunks-wrapper');
+            if (state.isDedupEnabled) {
+                chunksWrapper.style.gridTemplateColumns = '1fr 1fr';
+                 document.getElementById('stream-1-title').textContent = "Data Stream 1";
+            } else {
+                chunksWrapper.style.gridTemplateColumns = '1fr';
+                 document.getElementById('stream-1-title').textContent = "Data Stream";
+            }
+            initialize();
+        }
+
         // --- Visualization Logic ---
 
         function initialize() {
             stopPlay();
+            state.activeStream = 1;
             state.data = elements.dataInput.value;
+            state.data2 = elements.dataInput2.value;
             state.windowSize = parseInt(elements.windowSizeInput.value);
             state.targetLeadingZeros = parseInt(elements.targetZerosInput.value);
             state.currentIndex = 0;
             state.lastBoundaryIndex = 0;
             state.chunks = [];
-            // Remove old markers
-            state.boundaries.forEach(marker => marker.remove());
+            state.chunks2 = [];
+            state.chunkHashes1.clear();
+
+            // Clear all visual markers and windows
+            document.querySelectorAll('.boundary-marker').forEach(m => m.remove());
+            document.querySelectorAll('.window').forEach(w => w.style.display = 'none');
             state.boundaries = [];
             
-            // Pre-calculate base^(windowSize-1) % prime
             state.windowPower = 1;
             for(let i=0; i < state.windowSize - 1; i++) {
                 state.windowPower = (state.windowPower * config.base) % config.prime;
             }
 
-            // Render initial data stream
-            elements.dataStream.innerHTML = '<div class="window" id="sliding-window"></div>';
-            for (let char of state.data) {
-                const charSpan = document.createElement('span');
-                charSpan.className = 'char';
-                charSpan.textContent = char === ' ' ? '\u00A0' : char; // Handle spaces visually
-                elements.dataStream.appendChild(charSpan);
-            }
+            renderStream(elements.dataStream, state.data);
             elements.slidingWindow = document.getElementById('sliding-window'); // Re-acquire ref
+             if(elements.slidingWindow) elements.slidingWindow.style.display = 'block';
 
-            // Update labels and initial UI
+            if (state.isDedupEnabled) {
+                renderStream(elements.dataStream2, state.data2);
+                const secondWindow = document.getElementById('sliding-window-2');
+                if(secondWindow) secondWindow.style.display = 'none'; // Hide second window initially
+            }
+
             elements.lblTargetZeros.textContent = state.targetLeadingZeros;
             elements.avgSizeInput.value = Math.pow(2, state.targetLeadingZeros);
             elements.chunksContainer.innerHTML = '';
-            updateUI();
+            elements.chunksContainer2.innerHTML = '';
+            resetDedupStats();
 
             if (state.data.length >= state.windowSize) {
                 state.currentHash = initHash(state.data.substring(0, state.windowSize));
                 updateVisualization();
             } else {
-                 // Handle short data gracefully
                  elements.currentWindowText.textContent = "Data too short";
                  elements.stepBtn.disabled = true;
                  elements.playBtn.disabled = true;
             }
+             updateUI();
         }
 
         function updateUI() {
-            elements.stepBtn.disabled = state.currentIndex > state.data.length - state.windowSize;
-            elements.playBtn.disabled = elements.stepBtn.disabled;
+            let isFinished = false;
+            if (state.isDedupEnabled) {
+                // In dedup mode, finished means stream 2 is done.
+                isFinished = state.activeStream === 2 && (state.currentIndex >= state.data2.length - state.windowSize);
+            } else {
+                 // In single stream mode, finished means stream 1 is done.
+                isFinished = state.activeStream === 1 && (state.currentIndex >= state.data.length - state.windowSize);
+            }
+
+            elements.stepBtn.disabled = state.isPlaying || isFinished;
+            elements.playBtn.disabled = state.isPlaying || isFinished;
             elements.playBtn.textContent = state.isPlaying ? "Pause ||" : "Play >>";
         }
 
-        function updateVisualization() {
-            const windowEndIndex = state.currentIndex + state.windowSize;
-            const currentWindowStr = state.data.substring(state.currentIndex, windowEndIndex);
-            
-            // 1. Move Window (30px is char width + padding defined in CSS)
-            const charWidth = 30; 
-            elements.slidingWindow.style.left = `${state.currentIndex * charWidth + 15}px`;
-            elements.slidingWindow.style.width = `${state.windowSize * charWidth}px`;
+        function renderStream(container, data) {
+            const windowId = container.id === 'data-stream' ? 'sliding-window' : 'sliding-window-2';
+            container.innerHTML = `<div class="window" id="${windowId}"></div>`;
+            for (let char of data) {
+                const charSpan = document.createElement('span');
+                charSpan.className = 'char';
+                charSpan.textContent = char === ' ' ? '\u00A0' : char;
+                container.appendChild(charSpan);
+            }
+        }
+        
+        function resetDedupStats() {
+            state.dedupStats = { total: 0, unique: 0, duplicates: 0, saved: 0 };
+            elements.dedupTotal.textContent = '0';
+            elements.dedupUnique.textContent = '0';
+            elements.dedupDuplicates.textContent = '0';
+            elements.dedupSaved.textContent = '0%';
+        }
 
-            // 2. Update Hash Info
+        function updateVisualization() {
+            const isStream1 = state.activeStream === 1;
+            const data = isStream1 ? state.data : state.data2;
+            const windowEndIndex = state.currentIndex + state.windowSize;
+            const currentWindowStr = data.substring(state.currentIndex, windowEndIndex);
+            
+            const charWidth = 30; 
+            const activeWindow = isStream1 ? elements.slidingWindow : document.getElementById('sliding-window-2');
+            if(activeWindow) {
+                activeWindow.style.left = `${state.currentIndex * charWidth + 15}px`;
+                activeWindow.style.width = `${state.windowSize * charWidth}px`;
+            }
+
             elements.currentWindowText.textContent = `"${currentWindowStr}"`;
             elements.currentHash.textContent = state.currentHash;
 
-            // --- NEW LOGIC: Leading Zeros ---
-            // Count leading zeros in 32-bit integer representation
             const leadingZeros = Math.clz32(state.currentHash);
-            
-            // Create 32-bit padded binary string for display
-            // We use >>> 0 to coerce to an unsigned 32-bit integer before toString(2)
-            // to handle potential edge cases, although our prime keeps it positive.
             const binaryStr = (state.currentHash >>> 0).toString(2).padStart(32, '0');
             
-            // Visually highlight the leading zeros
             let formattedBinary = binaryStr;
             if (leadingZeros > 0) {
                  formattedBinary = `<span style="color: var(--boundary-color); font-weight: bold;">${binaryStr.substring(0, leadingZeros)}</span>${binaryStr.substring(leadingZeros)}`;
             }
-
             elements.hashBinary.innerHTML = formattedBinary;
             elements.zerosCount.textContent = leadingZeros;
 
-            // 3. Check Boundary Condition
             const isBoundary = leadingZeros >= state.targetLeadingZeros;
 
             if (isBoundary) {
                 elements.boundaryStatus.textContent = `YES! (${leadingZeros} >= ${state.targetLeadingZeros})`;
                 elements.boundaryStatus.style.color = "var(--boundary-color)";
                 
-                // Place visual marker
                 const marker = document.createElement('div');
                 marker.className = 'boundary-marker';
-                // Position at the end of the current window
                 marker.style.left = `${windowEndIndex * charWidth + 15}px`;
-                elements.dataStream.appendChild(marker);
+                
+                const activeStreamContainer = isStream1 ? elements.dataStream : elements.dataStream2;
+                activeStreamContainer.appendChild(marker);
                 state.boundaries.push(marker);
 
-                // Create Chunk
-                const newChunk = state.data.substring(state.lastBoundaryIndex, windowEndIndex);
-                state.chunks.push(newChunk);
+                const newChunk = data.substring(state.lastBoundaryIndex, windowEndIndex);
+                
+                if (isStream1) {
+                    state.chunks.push({ text: newChunk, hash: state.currentHash });
+                    state.chunkHashes1.add(state.currentHash);
+                } else if (state.isDedupEnabled) {
+                    const isDuplicate = state.chunkHashes1.has(state.currentHash);
+                    state.chunks2.push({ text: newChunk, hash: state.currentHash, isDuplicate });
+                    updateDedupStats(newChunk, isDuplicate);
+                }
+                
                 state.lastBoundaryIndex = windowEndIndex;
 
                 renderChunks();
@@ -426,25 +690,53 @@
 
             updateUI();
         }
-
+        
         function renderChunks() {
-            elements.chunksContainer.innerHTML = '';
-            state.chunks.forEach(chunk => {
-                const chunkDiv = document.createElement('div');
-                chunkDiv.className = 'chunk';
-                chunkDiv.textContent = chunk;
-                elements.chunksContainer.appendChild(chunkDiv);
-            });
+            const render = (container, chunks) => {
+                container.innerHTML = '';
+                chunks.forEach(chunk => {
+                    const chunkDiv = document.createElement('div');
+                    chunkDiv.className = 'chunk';
+                    if (chunk.isDuplicate) {
+                        chunkDiv.classList.add('deduplicated-chunk');
+                    }
+                    chunkDiv.textContent = chunk.text;
+                    container.appendChild(chunkDiv);
+                });
+            };
+            render(elements.chunksContainer, state.chunks);
+            if(state.isDedupEnabled) {
+                 render(elements.chunksContainer2, state.chunks2);
+            }
+        }
+        
+        function updateDedupStats(chunkText, isDuplicate) {
+            state.dedupStats.total++;
+            if(isDuplicate) {
+                state.dedupStats.duplicates++;
+            } else {
+                state.dedupStats.unique++;
+            }
+            
+            const totalSize = state.data2.length;
+            const savedSize = (state.dedupStats.duplicates / state.dedupStats.total) * totalSize;
+            state.dedupStats.saved = totalSize > 0 ? (savedSize / totalSize) * 100 : 0;
+            
+            elements.dedupTotal.textContent = state.dedupStats.total;
+            elements.dedupUnique.textContent = state.dedupStats.unique;
+            elements.dedupDuplicates.textContent = state.dedupStats.duplicates;
+            elements.dedupSaved.textContent = `${state.dedupStats.saved.toFixed(1)}%`;
         }
 
         function step() {
-            if (state.currentIndex < state.data.length - state.windowSize) {
-                const charOut = state.data[state.currentIndex];
-                const charIn = state.data[state.currentIndex + state.windowSize];
+            const isStream1 = state.activeStream === 1;
+            const data = isStream1 ? state.data : state.data2;
+
+            if (state.currentIndex < data.length - state.windowSize) {
+                const charOut = data[state.currentIndex];
+                const charIn = data[state.currentIndex + state.windowSize];
                 
-                // Roll the hash
                 state.currentHash = rollHash(state.currentHash, charOut, charIn);
-                
                 state.currentIndex++;
                 updateVisualization();
             } else {
@@ -453,45 +745,140 @@
         }
 
         function finalize() {
-             // End of data reached
-             stopPlay();
-             if (state.lastBoundaryIndex < state.data.length) {
-                 // Add the final remaining piece of data as a chunk
-                 const finalChunk = state.data.substring(state.lastBoundaryIndex);
-                 state.chunks.push(finalChunk);
+            const isStream1 = state.activeStream === 1;
+            const data = isStream1 ? state.data : state.data2;
+             
+            if (state.lastBoundaryIndex < data.length) {
+                 const finalChunk = data.substring(state.lastBoundaryIndex);
+                 const hash = initHash(finalChunk);
+                 if (isStream1) {
+                    state.chunks.push({text: finalChunk, hash });
+                    state.chunkHashes1.add(hash);
+                 } else if (state.isDedupEnabled) {
+                     const isDuplicate = state.chunkHashes1.has(hash);
+                     state.chunks2.push({text: finalChunk, hash, isDuplicate});
+                     updateDedupStats(finalChunk, isDuplicate);
+                 }
                  renderChunks();
-             }
+            }
+
+            if (isStream1 && state.isDedupEnabled) {
+                // First stream is done, start second stream
+                state.activeStream = 2;
+                state.currentIndex = 0;
+                state.lastBoundaryIndex = 0;
+                if (state.data2.length >= state.windowSize) {
+                    state.currentHash = initHash(state.data2.substring(0, state.windowSize));
+                    updateVisualization();
+                    if(state.isPlaying) {
+                        // Continue playing on the second stream
+                        // No change in interval
+                    }
+                } else {
+                    stopPlay();
+                }
+            } else {
+                // Both streams are done
+                stopPlay();
+            }
              updateUI();
+        }
+
+
+        async function runFullProcess() {
+            stopPlay(); // Ensure any previous play is stopped
+            state.isPlaying = true;
+            updateUI();
+
+            // --- STREAM 1 ---
+            state.activeStream = 1;
+            state.currentIndex = 0;
+            state.lastBoundaryIndex = 0;
+            
+            // Re-initialize visuals for stream 1
+            document.querySelectorAll('.boundary-marker').forEach(m => m.remove());
+            state.boundaries = [];
+            state.chunks = [];
+            state.chunkHashes1.clear();
+            renderChunks();
+             if (state.data.length < state.windowSize) { stopPlay(); return; }
+            
+            elements.slidingWindow.style.display = 'block';
+            if(document.getElementById('sliding-window-2')) document.getElementById('sliding-window-2').style.display = 'none';
+
+            state.currentHash = initHash(state.data.substring(0, state.windowSize));
+            updateVisualization();
+
+            while(state.currentIndex < state.data.length - state.windowSize) {
+                if (!state.isPlaying) return;
+                step();
+                await new Promise(r => setTimeout(r, 50));
+            }
+             if (!state.isPlaying) return;
+            finalize(); // Finalize stream 1
+
+            // --- STREAM 2 (if enabled) ---
+            if (state.isDedupEnabled && state.isPlaying) {
+                await new Promise(r => setTimeout(r, 500)); // Pause for effect
+                if (!state.isPlaying) return;
+
+                state.activeStream = 2;
+                state.currentIndex = 0;
+                state.lastBoundaryIndex = 0;
+                state.chunks2 = [];
+                resetDedupStats();
+                renderChunks();
+
+                if (state.data2.length < state.windowSize) { stopPlay(); return; }
+                
+                elements.slidingWindow.style.display = 'none';
+                const secondWindow = document.getElementById('sliding-window-2');
+                if(secondWindow) secondWindow.style.display = 'block';
+                
+                state.currentHash = initHash(state.data2.substring(0, state.windowSize));
+                updateVisualization();
+                
+                while(state.currentIndex < state.data2.length - state.windowSize) {
+                     if (!state.isPlaying) return;
+                    step();
+                    await new Promise(r => setTimeout(r, 50));
+                }
+                 if (!state.isPlaying) return;
+                finalize(); // Finalize stream 2
+            }
+
+            stopPlay();
         }
 
         function togglePlay() {
             if (state.isPlaying) {
                 stopPlay();
             } else {
-                state.isPlaying = true;
-                elements.playBtn.textContent = "Pause ||";
-                state.playInterval = setInterval(() => {
-                    if (state.currentIndex < state.data.length - state.windowSize) {
-                        step();
-                    } else {
-                        finalize();
-                    }
-                }, 400); // Animation speed (ms)
+                initialize(); // Reset everything before playing
+                runFullProcess();
             }
         }
 
         function stopPlay() {
             state.isPlaying = false;
-            clearInterval(state.playInterval);
+            if(state.playInterval) clearInterval(state.playInterval);
+            state.playInterval = null;
             updateUI();
         }
 
         // --- Event Listeners ---
         elements.resetBtn.addEventListener('click', initialize);
-        elements.stepBtn.addEventListener('click', step);
+        elements.stepBtn.addEventListener('click', () => {
+             if (state.isPlaying) return;
+             if (!state.activeStream || state.activeStream === 0) {
+                 initialize();
+                 state.activeStream = 1;
+             }
+             step();
+        });
         elements.playBtn.addEventListener('click', togglePlay);
+        elements.dedupToggle.addEventListener('change', toggleDedupView);
         
-        // Live update for "Avg. Chunk Size" field
         elements.targetZerosInput.addEventListener('input', (e) => {
             const n = parseInt(e.target.value);
             if (!isNaN(n)) {
@@ -500,7 +887,8 @@
         });
 
         // Initialize on load
-        initialize();
+        toggleDedupView();
+
 
     </script>
 </body>
